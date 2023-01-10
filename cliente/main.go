@@ -76,7 +76,7 @@ func main() {
 				continue
 			}
 
-			fmt.Println(m)
+			fmt.Print(m)
 
 		case m := <-input:
 			cmd := strings.Split(strings.TrimSpace(m), " ")
@@ -84,9 +84,9 @@ func main() {
 
 			switch command {
 			case "/help":
-				h := "/help 						- show this help\n"
-				h += "/quit 						- exit client\n"
-				h += "/connect <host:port> 			- connect to server"
+				h := "/help 					- show this help\n"
+				h += "/quit 					- exit client\n"
+				h += "/connect <host:port> 		- connect to server"
 
 				fmt.Println(h)
 				send(conn, "/help\n") // send help to server
@@ -94,9 +94,10 @@ func main() {
 
 			case "/connect":
 				server := cmd[1]
+				var err error
 
 				fmt.Printf("Connecting to %s...\n", server)
-				conn, err := net.Dial("tcp", server)
+				conn, err = net.Dial("tcp", server)
 				if err != nil {
 					fmt.Printf("Error: %s\n", err)
 					continue
