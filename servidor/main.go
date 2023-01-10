@@ -1,30 +1,48 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
-	"io"
+	"sync"
 )
 
-func handler(conn net.Conn) {
+type client struct {
+	nickname string
+	conn     net.Conn
+}
+
+var (
+	clients = make(map[string]*client, 0)
+	mu      sync.Mutex
+)
+
+func removeClient(ip string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(clients, ip)
+}
+
+func addClient(ip string, c *client) {
+	mu.Lock()
+	defer mu.Unlock()
+	clients[ip] = c
+}
+
+func handleReadConn(conn net.Conn, msgReadCh chan string, errCh chan error) {
 	for {
-		m, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				fmt.Println("Connection closed")
-				conn.Close()
-				return
-			}
-			fmt.Println("Error reading from connection", err)
+		if msgReadCh == nil || conn == nil {
 			return
 		}
-		_, err = conn.Write([]byte(m))
+
+		buf := make([]byte, 1024)
+		n, err := conn.Read(buf)
 		if err != nil {
-			fmt.Println("Error writing to connection")
+			errCh <- err
 			return
 		}
-		fmt.Printf("%v %q\n", conn.RemoteAddr(), m)
+
+		m := string(buf[:n])
+		msgReadCh <- m
 	}
 }
 
