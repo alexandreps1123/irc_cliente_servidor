@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -44,6 +45,21 @@ func handleReadConn(conn net.Conn, msgReadCh chan string, errCh chan error) {
 		m := string(buf[:n])
 		msgReadCh <- m
 	}
+}
+
+func send(conn net.Conn, msg string) bool {
+	_, err := conn.Write([]byte(msg))
+	if err != nil {
+		if err == io.EOF {
+			fmt.Printf("%v Connection closed\n", conn.RemoteAddr())
+			return false
+		}
+
+		fmt.Printf("%v Error: %v\n", conn.RemoteAddr(), err)
+		return false
+	}
+
+	return true
 }
 
 func main() {
