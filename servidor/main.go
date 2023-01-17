@@ -214,7 +214,7 @@ func handler(conn net.Conn) {
 				continue
 
 			// CHANNEL
-			case "/JOIN":
+			case "JOIN":
 				c := clients[conn.RemoteAddr().String()]
 
 				if c.channel == "" {
@@ -225,11 +225,11 @@ func handler(conn net.Conn) {
 				}
 
 				continue
-			case "/PART":
+			case "PART":
 				partChannel(conn, clientInstance)
 
 				continue
-			case "/LIST":
+			case "LIST":
 				mu.Lock()
 
 				var list string
@@ -254,6 +254,8 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
+
+			// END CHANNEL
 			case "/who":
 				mu.Lock()
 				for _, c := range clients {
@@ -265,16 +267,6 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
-			case "/help":
-				h := "/who 						- list all connected clients\n"
-				h += "/nick <new nickname> 		- change nickname\n"
-				h += "/msg <nickname> <message> - send message to client\n"
-
-				if !send(conn, h) {
-					return
-				}
-				continue
-
 			case "/msg":
 				mu.Lock()
 				for _, c := range clients {
@@ -291,40 +283,36 @@ func handler(conn net.Conn) {
 
 				continue
 
-			case "/quit":
+			case "QUIT":
 				mu.Lock()
-				c := clients[conn.RemoteAddr().String()]
-				msg := fmt.Sprintf("%s left...\n", c.nickname)
-				for _, c := range clients {
-					if !send(c.conn, msg) {
-						mu.Unlock()
-						return
+				for key, c := range clients {
+					msg := fmt.Sprintf("PART: %v left from the channel %v\n", clientInstance.nickname, clientInstance.channel)
+					if clients[key].channel == clientInstance.channel {
+						if !send(c.conn, msg) {
+							mu.Unlock()
+							return
+						}
 					}
 				}
-				mu.Unlock()
 
+				// /connect localhost:8888
+				mu.Unlock()
 				continue
 			case "":
 				continue
-			}
+			default:
+				mu.Lock()
 
-			mu.Lock()
-			for _, c := range clients {
-				if clientInstance.channel == c.channel {
-					msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
-					if !send(c.conn, msg) {
-						mu.Unlock()
-						return
-					}
-				} else if clientInstance.channel == "" && c.channel == "" {
-					msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
-					if !send(c.conn, msg) {
-						mu.Unlock()
-						return
-					}
+				msg := fmt.Sprintf("ERR UNKNOWNCOMMAND\n")
+				if !send(clientInstance.conn, msg) {
+					mu.Unlock()
+					return
 				}
+
+				mu.Unlock()
+
+				continue
 			}
-			mu.Unlock()
 
 		case err := <-errCh:
 			if err == io.EOF {
