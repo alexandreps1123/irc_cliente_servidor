@@ -82,15 +82,6 @@ func main() {
 			command := cmd[0]
 
 			switch command {
-			case "/help":
-				h := "/help 					- show this help\n"
-				h += "/quit 					- exit client\n"
-				h += "/connect <host:port> 		- connect to server"
-
-				fmt.Println(h)
-				send(conn, "/help\n") // send help to server
-				continue
-
 			case "/connect":
 				server := cmd[1]
 				var err error
@@ -106,9 +97,9 @@ func main() {
 				go readConn(conn)
 				continue
 
-			case "/quit":
-				send(conn, "/quit\n")
-				fmt.Println("\nDisconnecting..")
+			case "QUIT":
+				send(conn, "QUIT\n")
+				fmt.Println("\nDisconnecting...")
 				os.Exit(0)
 
 			case "":
