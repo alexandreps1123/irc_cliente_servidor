@@ -14,6 +14,7 @@ import (
 
 type client struct {
 	nickname string
+	channel  string
 	conn     net.Conn
 }
 
@@ -65,6 +66,16 @@ func send(conn net.Conn, msg string) bool {
 	return true
 }
 
+func existsNickname(nickname string) bool {
+	for key := range clients {
+		if clients[key].nickname == nickname {
+			return true
+		}
+	}
+
+	return false
+}
+
 func handler(conn net.Conn) {
 	pingInterval := time.Second * 5
 	maxPingInterval := time.Second * 15
@@ -75,6 +86,7 @@ func handler(conn net.Conn) {
 	clientInstance := &client{
 		conn:     conn,
 		nickname: "unknown: " + conn.RemoteAddr().String(),
+		channel:  "",
 	}
 
 	addClient(conn.RemoteAddr().String(), clientInstance)
@@ -95,11 +107,12 @@ func handler(conn net.Conn) {
 				if !send(conn, "ping\n") {
 					return
 				}
-				if time.Since(lastMsgTime) > maxPingInterval {
-					fmt.Println("Inactive connection, closing")
-					return
-				}
 			}
+			if time.Since(lastMsgTime) > maxPingInterval {
+				fmt.Println("Inactive connection, closing")
+				return
+			}
+
 		case msg := <-msgReadCh:
 			lastMsgTime = time.Now()
 			cmd := strings.Split(strings.TrimSpace(msg), " ")
@@ -109,19 +122,53 @@ func handler(conn net.Conn) {
 			switch command {
 			case "pong":
 				continue
-			case "/nick":
+
+			// DONE
+			case "/NICK":
 				mu.Lock()
 				c := clients[conn.RemoteAddr().String()]
-				oldNick := c.nickname
-				c.nickname = cmd[1]
-				clients[conn.RemoteAddr().String()] = c
-				msg := fmt.Sprintf("%s changed nickname to %s", oldNick, cmd[1])
-				for _, c := range clients {
-					if !send(c.conn, msg) {
+
+				if !existsNickname(cmd[1]) {
+					oldNick := c.nickname
+					c.nickname = cmd[1]
+					clients[conn.RemoteAddr().String()] = c
+					msg := fmt.Sprintf("NICKNAME: %v changed nickname to %v", oldNick, cmd[1])
+					for _, c := range clients {
+						if !send(c.conn, msg) {
+							mu.Unlock()
+							return
+						}
+					}
+				} else {
+					msg := fmt.Sprintf("NICKNAME: %v is already used\n", cmd[1])
+					if !send(conn, msg) {
 						mu.Unlock()
 						return
 					}
 				}
+				mu.Unlock()
+
+				continue
+
+			// CHANNEL
+			case "/JOIN":
+				mu.Lock()
+				c := clients[conn.RemoteAddr().String()]
+
+				if c.channel == "" {
+					c.channel = cmd[1]
+					clients[conn.RemoteAddr().String()] = c
+					for key, c := range clients {
+						msg := fmt.Sprintf("USER: %v joined in the channel %v\n", clientInstance.nickname, clientInstance.channel)
+						if clients[key].channel == cmd[1] {
+							if !send(c.conn, msg) {
+								mu.Unlock()
+								return
+							}
+						}
+					}
+				}
+
 				mu.Unlock()
 
 				continue
@@ -161,16 +208,38 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
+
+			case "/quit":
+				mu.Lock()
+				c := clients[conn.RemoteAddr().String()]
+				msg := fmt.Sprintf("%s left...\n", c.nickname)
+				for _, c := range clients {
+					if !send(c.conn, msg) {
+						mu.Unlock()
+						return
+					}
+				}
+				mu.Unlock()
+
+				continue
 			case "":
 				continue
 			}
 
 			mu.Lock()
 			for _, c := range clients {
-				msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
-				if !send(c.conn, msg) {
-					mu.Unlock()
-					return
+				if clientInstance.channel == c.channel {
+					msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
+					if !send(c.conn, msg) {
+						mu.Unlock()
+						return
+					}
+				} else if clientInstance.channel == "" && c.channel == "" {
+					msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
+					if !send(c.conn, msg) {
+						mu.Unlock()
+						return
+					}
 				}
 			}
 			mu.Unlock()
@@ -194,7 +263,7 @@ func main() {
 	go func() {
 		<-sigs
 		fmt.Println("\nShutdown server...")
-		os.Exit(1)
+		os.Exit(0)
 	}()
 
 	ln, _ := net.Listen("tcp", ":8888")
