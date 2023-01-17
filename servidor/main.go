@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -195,6 +196,31 @@ func handler(conn net.Conn) {
 							}
 						}
 					}
+				}
+
+				mu.Unlock()
+
+				continue
+			case "/LIST":
+				mu.Lock()
+
+				var list string
+				channels := make(map[string]int)
+
+				for _, c := range clients {
+					if c.channel != "" {
+						channels[c.channel]++
+					}
+				}
+
+				for key, value := range channels {
+					list += key + ": " + strconv.Itoa(value) + "\n"
+				}
+
+				msg := fmt.Sprintf("LIST: \n%v", list)
+				if !send(clientInstance.conn, msg) {
+					mu.Unlock()
+					return
 				}
 
 				mu.Unlock()
