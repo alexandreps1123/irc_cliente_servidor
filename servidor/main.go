@@ -67,6 +67,46 @@ func send(conn net.Conn, msg string) bool {
 	return true
 }
 
+func setNickname(conn net.Conn, cmd []string) {
+	mu.Lock()
+	c := clients[conn.RemoteAddr().String()]
+
+	if !existsParam(cmd) {
+		msg := fmt.Sprintf("No channel name\n")
+		if !send(c.conn, msg) {
+			mu.Unlock()
+			return
+		}
+
+		mu.Unlock()
+		return
+	}
+
+	if wordInUse(cmd[1]) {
+		msg := fmt.Sprintf("%v is already used\n", cmd[1])
+		if !send(conn, msg) {
+			mu.Unlock()
+			return
+		}
+
+		mu.Unlock()
+		return
+	}
+
+	oldNick := c.nickname
+	c.nickname = cmd[1]
+	clients[conn.RemoteAddr().String()] = c
+	msg := fmt.Sprintf("NICKNAME: %v changed nickname to %v", oldNick, cmd[1])
+	for _, c := range clients {
+		if !send(c.conn, msg) {
+			mu.Unlock()
+			return
+		}
+	}
+
+	mu.Unlock()
+}
+
 func joinChannel(conn net.Conn, cmd []string) {
 	mu.Lock()
 	c := clients[conn.RemoteAddr().String()]
@@ -74,6 +114,17 @@ func joinChannel(conn net.Conn, cmd []string) {
 	if !existsParam(cmd) {
 		msg := fmt.Sprintf("No channel name\n")
 		if !send(c.conn, msg) {
+			mu.Unlock()
+			return
+		}
+
+		mu.Unlock()
+		return
+	}
+
+	if wordInUse(cmd[1]) {
+		msg := fmt.Sprintf("%v is already used\n", cmd[1])
+		if !send(conn, msg) {
 			mu.Unlock()
 			return
 		}
@@ -129,9 +180,23 @@ func existsParam(cmd []string) bool {
 	return len(cmd) > 1
 }
 
+func wordInUse(word string) bool {
+	return existsNickname(word) || existsChannel(word)
+}
+
 func existsNickname(nickname string) bool {
 	for key := range clients {
 		if clients[key].nickname == nickname {
+			return true
+		}
+	}
+
+	return false
+}
+
+func existsChannel(channel string) bool {
+	for key := range clients {
+		if clients[key].channel == channel {
 			return true
 		}
 	}
@@ -186,34 +251,10 @@ func handler(conn net.Conn) {
 			case "pong":
 				continue
 
-			// DONE
 			case "/NICK":
-				mu.Lock()
-				c := clients[conn.RemoteAddr().String()]
-
-				if !existsNickname(cmd[1]) {
-					oldNick := c.nickname
-					c.nickname = cmd[1]
-					clients[conn.RemoteAddr().String()] = c
-					msg := fmt.Sprintf("NICKNAME: %v changed nickname to %v", oldNick, cmd[1])
-					for _, c := range clients {
-						if !send(c.conn, msg) {
-							mu.Unlock()
-							return
-						}
-					}
-				} else {
-					msg := fmt.Sprintf("NICKNAME: %v is already used\n", cmd[1])
-					if !send(conn, msg) {
-						mu.Unlock()
-						return
-					}
-				}
-				mu.Unlock()
+				setNickname(conn, cmd)
 
 				continue
-
-			// CHANNEL
 			case "JOIN":
 				c := clients[conn.RemoteAddr().String()]
 
@@ -254,8 +295,6 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
-
-			// END CHANNEL
 			case "/who":
 				mu.Lock()
 				for _, c := range clients {
@@ -267,18 +306,43 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
-			case "/msg":
+			case "PRIVMSG":
 				mu.Lock()
-				for _, c := range clients {
-					if c.nickname == cmd[1] {
-						msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, strings.Join(cmd[2:], " "))
-						if !send(c.conn, msg) {
-							mu.Unlock()
-							return
+
+				if !existsParam(cmd) {
+					msg := fmt.Sprintf("No channel name\n")
+					if !send(clientInstance.conn, msg) {
+						mu.Unlock()
+						return
+					}
+
+					mu.Unlock()
+					return
+				}
+
+				if clientInstance.channel == cmd[1] {
+					for _, c := range clients {
+						if clientInstance.channel == c.channel {
+							msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, msg)
+							if !send(c.conn, msg) {
+								mu.Unlock()
+								return
+							}
 						}
-						break
+					}
+				} else {
+					for _, c := range clients {
+						if c.nickname == cmd[1] {
+							msg := fmt.Sprintf("%v: %v\n", clientInstance.nickname, strings.Join(cmd[2:], " "))
+							if !send(c.conn, msg) {
+								mu.Unlock()
+								return
+							}
+							break
+						}
 					}
 				}
+
 				mu.Unlock()
 
 				continue
@@ -295,7 +359,6 @@ func handler(conn net.Conn) {
 					}
 				}
 
-				// /connect localhost:8888
 				mu.Unlock()
 				continue
 			case "":
