@@ -69,7 +69,6 @@ func main() {
 			fmt.Println("\nDisconnecting...")
 			os.Exit(0)
 
-		// necessario ping-pong (?)
 		case m := <-output:
 			if m == "ping\n" {
 				send(conn, "pong\n")
@@ -108,6 +107,7 @@ func main() {
 				continue
 
 			case "/quit":
+				send(conn, "/quit\n")
 				fmt.Println("\nDisconnecting..")
 				os.Exit(0)
 
