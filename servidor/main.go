@@ -286,23 +286,12 @@ func handler(conn net.Conn) {
 					list += key + ": " + strconv.Itoa(value) + "\n"
 				}
 
-				msg := fmt.Sprintf("LIST: \n%v", list)
+				msg := fmt.Sprintf("\n%v", list)
 				if !send(clientInstance.conn, msg) {
 					mu.Unlock()
 					return
 				}
 
-				mu.Unlock()
-
-				continue
-			case "/who":
-				mu.Lock()
-				for _, c := range clients {
-					if !send(conn, fmt.Sprintf("%s\n", c.nickname)) {
-						mu.Unlock()
-						return
-					}
-				}
 				mu.Unlock()
 
 				continue
@@ -346,7 +335,35 @@ func handler(conn net.Conn) {
 				mu.Unlock()
 
 				continue
+			case "WHO":
+				mu.Lock()
+				c := clients[conn.RemoteAddr().String()]
 
+				if !existsParam(cmd) {
+					msg := fmt.Sprintf("No channel name\n")
+					if !send(c.conn, msg) {
+						mu.Unlock()
+						return
+					}
+				} else {
+					var list string
+
+					for _, value := range clients {
+						if value.channel == cmd[1] {
+							list += value.nickname + "\n"
+						}
+					}
+
+					msg := fmt.Sprintf("%v", list)
+					if !send(clientInstance.conn, msg) {
+						mu.Unlock()
+						return
+					}
+				}
+
+				mu.Unlock()
+
+				continue
 			case "QUIT":
 				mu.Lock()
 				for key, c := range clients {
