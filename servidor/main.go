@@ -67,6 +67,68 @@ func send(conn net.Conn, msg string) bool {
 	return true
 }
 
+func joinChannel(conn net.Conn, cmd []string) {
+	mu.Lock()
+	c := clients[conn.RemoteAddr().String()]
+
+	if !existsParam(cmd) {
+		msg := fmt.Sprintf("No channel name\n")
+		if !send(c.conn, msg) {
+			mu.Unlock()
+			return
+		}
+
+		mu.Unlock()
+		return
+	}
+
+	c.channel = cmd[1]
+	clients[conn.RemoteAddr().String()] = c
+	for key, c := range clients {
+		msg := fmt.Sprintf("JOIN: %v joined in the channel %v\n", c.nickname, c.channel)
+		if clients[key].channel == cmd[1] {
+			if !send(c.conn, msg) {
+				mu.Unlock()
+				return
+			}
+		}
+	}
+
+	mu.Unlock()
+}
+
+func partChannel(conn net.Conn, client *client) {
+	mu.Lock()
+	c := clients[conn.RemoteAddr().String()]
+	oldChannel := c.channel
+	c.channel = ""
+	clients[conn.RemoteAddr().String()] = c
+
+	if oldChannel == "" {
+		msg := fmt.Sprintf("PART: %v are not in a channel\n", client.nickname)
+		if !send(c.conn, msg) {
+			mu.Unlock()
+			return
+		}
+	} else {
+		for key, c := range clients {
+			msg := fmt.Sprintf("PART: %v left from the channel %v\n", client.nickname, client.channel)
+			if clients[key].channel == oldChannel {
+				if !send(c.conn, msg) {
+					mu.Unlock()
+					return
+				}
+			}
+		}
+	}
+
+	mu.Unlock()
+}
+
+func existsParam(cmd []string) bool {
+	return len(cmd) > 1
+}
+
 func existsNickname(nickname string) bool {
 	for key := range clients {
 		if clients[key].nickname == nickname {
@@ -153,52 +215,18 @@ func handler(conn net.Conn) {
 
 			// CHANNEL
 			case "/JOIN":
-				mu.Lock()
 				c := clients[conn.RemoteAddr().String()]
 
 				if c.channel == "" {
-					c.channel = cmd[1]
-					clients[conn.RemoteAddr().String()] = c
-					for key, c := range clients {
-						msg := fmt.Sprintf("JOIN: %v joined in the channel %v\n", clientInstance.nickname, clientInstance.channel)
-						if clients[key].channel == cmd[1] {
-							if !send(c.conn, msg) {
-								mu.Unlock()
-								return
-							}
-						}
-					}
+					joinChannel(conn, cmd)
+				} else {
+					partChannel(conn, clientInstance)
+					joinChannel(conn, cmd)
 				}
-
-				mu.Unlock()
 
 				continue
 			case "/PART":
-				mu.Lock()
-				c := clients[conn.RemoteAddr().String()]
-				oldChannel := c.channel
-				c.channel = ""
-				clients[conn.RemoteAddr().String()] = c
-
-				if oldChannel == "" {
-					msg := fmt.Sprintf("PART: %v are not in a channel\n", clientInstance.nickname)
-					if !send(c.conn, msg) {
-						mu.Unlock()
-						return
-					}
-				} else {
-					for key, c := range clients {
-						msg := fmt.Sprintf("PART: %v left from the channel %v\n", clientInstance.nickname, clientInstance.channel)
-						if clients[key].channel == oldChannel {
-							if !send(c.conn, msg) {
-								mu.Unlock()
-								return
-							}
-						}
-					}
-				}
-
-				mu.Unlock()
+				partChannel(conn, clientInstance)
 
 				continue
 			case "/LIST":
