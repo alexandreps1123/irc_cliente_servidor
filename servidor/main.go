@@ -226,7 +226,7 @@ func handler(conn net.Conn) {
 			case "pong":
 				continue
 
-			case "/NICK":
+			case "NICK":
 				setNickname(conn, cmd)
 
 				continue
