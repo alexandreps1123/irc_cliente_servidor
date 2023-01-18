@@ -82,7 +82,7 @@ func setNickname(conn net.Conn, cmd []string) {
 		return
 	}
 
-	if wordInUse(cmd[1]) {
+	if existsNickname(cmd[1]) {
 		msg := fmt.Sprintf("%v is already used\n", cmd[1])
 		if !send(conn, msg) {
 			mu.Unlock()
@@ -114,17 +114,6 @@ func joinChannel(conn net.Conn, cmd []string) {
 	if !existsParam(cmd) {
 		msg := fmt.Sprintf("No channel name\n")
 		if !send(c.conn, msg) {
-			mu.Unlock()
-			return
-		}
-
-		mu.Unlock()
-		return
-	}
-
-	if wordInUse(cmd[1]) {
-		msg := fmt.Sprintf("%v is already used\n", cmd[1])
-		if !send(conn, msg) {
 			mu.Unlock()
 			return
 		}
@@ -180,23 +169,9 @@ func existsParam(cmd []string) bool {
 	return len(cmd) > 1
 }
 
-func wordInUse(word string) bool {
-	return existsNickname(word) || existsChannel(word)
-}
-
 func existsNickname(nickname string) bool {
 	for key := range clients {
 		if clients[key].nickname == nickname {
-			return true
-		}
-	}
-
-	return false
-}
-
-func existsChannel(channel string) bool {
-	for key := range clients {
-		if clients[key].channel == channel {
 			return true
 		}
 	}
